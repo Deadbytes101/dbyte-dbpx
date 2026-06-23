@@ -9,6 +9,7 @@ pub const MAX_PIXELS: u64 = 67_108_864;
 const PXLS: [u8; 4] = *b"PXLS";
 const END: [u8; 4] = *b"END!";
 const CHUNK_HEAD: usize = 16;
+const MAX_INDEXED_COLORS: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColorType(u8);
@@ -54,10 +55,11 @@ pub struct Compression(u8);
 impl Compression {
     pub const RAW: Self = Self(0);
     pub const RLE: Self = Self(1);
+    pub const INDEXED: Self = Self(2);
 
     pub fn from_id(id: u8) -> Result<Self, DbpxError> {
         match id {
-            0 | 1 => Ok(Self(id)),
+            0 | 1 | 2 => Ok(Self(id)),
             _ => Err(DbpxError::new(format!("bad compression {id}"))),
         }
     }
@@ -70,6 +72,7 @@ impl Compression {
         match self.0 {
             0 => "raw",
             1 => "dbpx-rle",
+            2 => "dbpx-indexed",
             _ => "INVALID",
         }
     }
@@ -134,8 +137,12 @@ pub fn encode(img: &Image, comp: Compression) -> Result<Vec<u8>, DbpxError> {
     check_shape(img.width, img.height, img.color, img.pixels.len())?;
     let payload = if comp == Compression::RAW {
         img.pixels.clone()
-    } else {
+    } else if comp == Compression::RLE {
         encode_rle(img)?
+    } else if comp == Compression::INDEXED {
+        encode_indexed(img)?
+    } else {
+        return fail(format!("bad compression {}", comp.id()));
     };
     let mut out = Vec::with_capacity(HEADER_LEN + CHUNK_HEAD * 2 + payload.len());
     out.extend_from_slice(&MAGIC);
@@ -151,21 +158,29 @@ pub fn encode(img: &Image, comp: Compression) -> Result<Vec<u8>, DbpxError> {
 }
 
 pub fn encode_auto(img: &Image) -> Result<Vec<u8>, DbpxError> {
-    let raw = encode(img, Compression::RAW)?;
+    let mut best = encode(img, Compression::RAW)?;
     let rle = encode(img, Compression::RLE)?;
-    if rle.len() < raw.len() {
-        Ok(rle)
-    } else {
-        Ok(raw)
+    if rle.len() < best.len() {
+        best = rle;
     }
+    if let Ok(indexed) = encode(img, Compression::INDEXED) {
+        if indexed.len() < best.len() {
+            best = indexed;
+        }
+    }
+    Ok(best)
 }
 
 pub fn decode(data: &[u8]) -> Result<Image, DbpxError> {
     let (meta, payload) = parse(data)?;
     let pixels = if meta.compression == Compression::RAW {
         raw(&meta, payload)?
-    } else {
+    } else if meta.compression == Compression::RLE {
         decode_rle(&meta, payload)?
+    } else if meta.compression == Compression::INDEXED {
+        decode_indexed(&meta, payload)?
+    } else {
+        return fail(format!("bad compression {}", meta.compression.id()));
     };
     Image::new(meta.width, meta.height, meta.color, pixels)
 }
@@ -343,6 +358,74 @@ fn decode_rle(meta: &Info, payload: &[u8]) -> Result<Vec<u8>, DbpxError> {
     }
     if rgba_out.len() / 4 != total {
         return fail("RLE decoded pixel count mismatch");
+    }
+    Ok(pack(&rgba_out, meta.color))
+}
+
+fn encode_indexed(img: &Image) -> Result<Vec<u8>, DbpxError> {
+    let total = pixels(img.width, img.height)? as usize;
+    let mut palette = Vec::<[u8; 4]>::new();
+    let mut indices = Vec::<u8>::with_capacity(total);
+
+    for i in 0..total {
+        let px = rgba(img, i);
+        let index = match palette.iter().position(|&seen| seen == px) {
+            Some(index) => index,
+            None => {
+                if palette.len() == MAX_INDEXED_COLORS {
+                    return fail("indexed compression supports at most 256 colors");
+                }
+                palette.push(px);
+                palette.len() - 1
+            }
+        };
+        indices.push(index as u8);
+    }
+
+    if palette.is_empty() {
+        return fail("indexed compression requires at least one color");
+    }
+
+    let mut out = Vec::with_capacity(1 + palette.len() * 4 + indices.len());
+    out.push((palette.len() - 1) as u8);
+    for px in &palette {
+        out.extend_from_slice(px);
+    }
+    out.extend_from_slice(&indices);
+    Ok(out)
+}
+
+fn decode_indexed(meta: &Info, payload: &[u8]) -> Result<Vec<u8>, DbpxError> {
+    if payload.is_empty() {
+        return fail("truncated indexed payload");
+    }
+    let colors = payload[0] as usize + 1;
+    let palette_bytes = colors
+        .checked_mul(4)
+        .ok_or_else(|| DbpxError::new("indexed palette size overflow"))?;
+    let indices_start = 1usize
+        .checked_add(palette_bytes)
+        .ok_or_else(|| DbpxError::new("indexed payload offset overflow"))?;
+    if payload.len() < indices_start {
+        return fail("truncated indexed palette");
+    }
+    let total = pixels(meta.width, meta.height)? as usize;
+    let index_bytes = payload.len() - indices_start;
+    if index_bytes != total {
+        return fail(format!(
+            "bad indexed pixel count: expected {total}, got {index_bytes}"
+        ));
+    }
+
+    let palette = &payload[1..indices_start];
+    let indices = &payload[indices_start..];
+    let mut rgba_out = Vec::with_capacity(total * 4);
+    for &index in indices {
+        if index as usize >= colors {
+            return fail(format!("indexed pixel uses missing palette entry {index}"));
+        }
+        let at = index as usize * 4;
+        rgba_out.extend_from_slice(&palette[at..at + 4]);
     }
     Ok(pack(&rgba_out, meta.color))
 }
@@ -533,8 +616,27 @@ mod tests {
     }
 
     #[test]
-    fn encode_auto_prefers_raw_when_rle_is_larger() {
-        let img = Image::new(2, 1, ColorType::RGB8, vec![1, 2, 3, 4, 5, 6]).unwrap();
+    fn roundtrip_indexed_rgb() {
+        let img = Image::new(
+            4,
+            1,
+            ColorType::RGB8,
+            vec![1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
+        )
+        .unwrap();
+        assert_eq!(
+            decode(&encode(&img, Compression::INDEXED).unwrap()).unwrap(),
+            img
+        );
+    }
+
+    #[test]
+    fn encode_auto_prefers_raw_when_rle_and_indexed_are_larger() {
+        let mut pixels = Vec::new();
+        for i in 0..300u16 {
+            pixels.extend_from_slice(&[(i & 0xFF) as u8, (i >> 8) as u8, 0]);
+        }
+        let img = Image::new(300, 1, ColorType::RGB8, pixels).unwrap();
         let encoded = encode_auto(&img).unwrap();
         assert_eq!(info(&encoded).unwrap().compression, Compression::RAW);
         assert_eq!(decode(&encoded).unwrap(), img);
@@ -554,6 +656,32 @@ mod tests {
         let encoded = encode_auto(&img).unwrap();
         assert_eq!(info(&encoded).unwrap().compression, Compression::RLE);
         assert_eq!(decode(&encoded).unwrap(), img);
+    }
+
+    #[test]
+    fn encode_auto_prefers_indexed_when_palette_is_smaller() {
+        let mut pixels = Vec::new();
+        for i in 0..64u8 {
+            let color = if i % 2 == 0 { [10, 20, 30] } else { [40, 50, 60] };
+            pixels.extend_from_slice(&color);
+        }
+        let img = Image::new(64, 1, ColorType::RGB8, pixels).unwrap();
+        let encoded = encode_auto(&img).unwrap();
+        assert_eq!(info(&encoded).unwrap().compression, Compression::INDEXED);
+        assert_eq!(decode(&encoded).unwrap(), img);
+    }
+
+    #[test]
+    fn indexed_rejects_too_many_colors() {
+        let mut pixels = Vec::new();
+        for i in 0..257u16 {
+            pixels.extend_from_slice(&[(i & 0xFF) as u8, (i >> 8) as u8, 1]);
+        }
+        let img = Image::new(257, 1, ColorType::RGB8, pixels).unwrap();
+        let err = encode(&img, Compression::INDEXED)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("at most 256 colors"));
     }
 
     #[test]
