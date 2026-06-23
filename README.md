@@ -4,6 +4,8 @@ DBPX is a small deterministic lossless raster image format for screenshots, pixe
 
 It is not trying to beat JPEG on photographs in v0.1. The first target is narrower: a format that is easy to inspect, safe to decode, fast to round-trip, and small enough that one person can understand the full implementation.
 
+<img width="1185" height="832" alt="image" src="https://github.com/user-attachments/assets/d8cf4c65-8645-4b25-9d6a-629342ce338e" />
+
 ## Format
 
 ```text
