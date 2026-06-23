@@ -380,7 +380,8 @@ fn write_ppm(path: impl AsRef<Path>, image: &Image) -> Result<(), AnyError> {
 
 fn write_bmp(path: impl AsRef<Path>, image: &Image) -> Result<(), AnyError> {
     let width = usize::try_from(image.width).map_err(|_| cli_error("BMP width overflows usize"))?;
-    let height = usize::try_from(image.height).map_err(|_| cli_error("BMP height overflows usize"))?;
+    let height =
+        usize::try_from(image.height).map_err(|_| cli_error("BMP height overflows usize"))?;
     let row_bytes = width
         .checked_mul(3)
         .ok_or_else(|| cli_error("BMP row size overflow"))?;
