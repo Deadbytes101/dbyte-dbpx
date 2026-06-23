@@ -1,4 +1,4 @@
-use dbpx::{decode, encode, info, rgb_bytes, ColorType, Compression, Image};
+use dbpx::{decode, encode, encode_auto, info, rgb_bytes, ColorType, Compression, Image};
 use std::env;
 use std::error::Error;
 use std::fmt;
@@ -76,13 +76,8 @@ fn command_check(args: &[String]) -> Result<(), AnyError> {
 fn command_encode_ppm(args: &[String]) -> Result<(), AnyError> {
     let input = required(args, 0, "input.ppm")?;
     let output = required(args, 1, "output.dbpx")?;
-    let compression = if args.iter().any(|arg| arg == "--raw") {
-        Compression::RAW
-    } else {
-        Compression::RLE
-    };
     let image = parse_ppm(&fs::read(input)?)?;
-    fs::write(output, encode(&image, compression)?)?;
+    fs::write(output, encode_from_flags(&image, args)?)?;
     Ok(())
 }
 
@@ -99,8 +94,18 @@ fn command_make_demo(args: &[String]) -> Result<(), AnyError> {
     let width = optional_u32(args.get(1), 320, "width")?;
     let height = optional_u32(args.get(2), 200, "height")?;
     let image = demo(width, height)?;
-    fs::write(output, encode(&image, Compression::RLE)?)?;
+    fs::write(output, encode_from_flags(&image, args)?)?;
     Ok(())
+}
+
+fn encode_from_flags(image: &Image, args: &[String]) -> Result<Vec<u8>, dbpx::DbpxError> {
+    if args.iter().any(|arg| arg == "--raw") {
+        encode(image, Compression::RAW)
+    } else if args.iter().any(|arg| arg == "--rle") {
+        encode(image, Compression::RLE)
+    } else {
+        encode_auto(image)
+    }
 }
 
 fn demo(width: u32, height: u32) -> Result<Image, AnyError> {
@@ -218,6 +223,6 @@ fn fail<T>(message: impl Into<String>) -> Result<T, AnyError> {
 
 fn usage() {
     println!(
-        "DBPX v0.1\n\nUsage:\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height]"
+        "DBPX v0.1\n\nUsage:\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
     );
 }
