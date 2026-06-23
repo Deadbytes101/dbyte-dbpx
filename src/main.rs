@@ -5,9 +5,11 @@ use std::env;
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use std::hint::black_box;
 use std::io::Write;
 use std::path::Path;
 use std::process;
+use std::time::Instant;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 type AnyError = Box<dyn Error>;
@@ -47,6 +49,7 @@ fn run() -> Result<(), AnyError> {
         Some("info") => command_info(&args[2..]),
         Some("check") => command_check(&args[2..]),
         Some("dump") => command_dump(&args[2..]),
+        Some("bench") => command_bench(&args[2..]),
         Some("enc-ppm") => command_encode_ppm(&args[2..]),
         Some("dec-ppm") => command_decode_ppm(&args[2..]),
         Some("make-demo") => command_make_demo(&args[2..]),
@@ -109,6 +112,57 @@ fn command_dump(args: &[String]) -> Result<(), AnyError> {
             chunk.crc
         );
     }
+    Ok(())
+}
+
+fn command_bench(args: &[String]) -> Result<(), AnyError> {
+    let width = optional_u32(args.get(0), 320, "width")?;
+    let height = optional_u32(args.get(1), 200, "height")?;
+    let iterations = optional_usize(args.get(2), 64, "iterations")?;
+    if iterations == 0 {
+        return fail("iterations must be non-zero");
+    }
+
+    let image = demo(width, height)?;
+    let raw_once = encode(&image, Compression::RAW)?;
+    let rle_once = encode(&image, Compression::RLE)?;
+    let auto_once = encode_auto(&image)?;
+    let auto_meta = info(&auto_once)?;
+
+    let mut sink = 0usize;
+
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let encoded = encode(black_box(&image), Compression::RAW)?;
+        sink ^= black_box(encoded.len());
+    }
+    let encode_raw_us = start.elapsed().as_micros();
+
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let encoded = encode(black_box(&image), Compression::RLE)?;
+        sink ^= black_box(encoded.len());
+    }
+    let encode_rle_us = start.elapsed().as_micros();
+
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let decoded = decode(black_box(&auto_once))?;
+        sink ^= black_box(decoded.pixels.len());
+    }
+    let decode_auto_us = start.elapsed().as_micros();
+
+    black_box(sink);
+
+    println!("bench: {}x{} RGB8", width, height);
+    println!("iterations: {iterations}");
+    println!("raw-file-bytes: {}", raw_once.len());
+    println!("rle-file-bytes: {}", rle_once.len());
+    println!("auto-file-bytes: {}", auto_once.len());
+    println!("auto-compression: {}", auto_meta.compression.name());
+    println!("encode-raw-us: {encode_raw_us}");
+    println!("encode-rle-us: {encode_rle_us}");
+    println!("decode-auto-us: {decode_auto_us}");
     Ok(())
 }
 
@@ -278,6 +332,19 @@ fn optional_u32(value: Option<&String>, default: u32, name: &'static str) -> Res
     }
 }
 
+fn optional_usize(
+    value: Option<&String>,
+    default: usize,
+    name: &'static str,
+) -> Result<usize, AnyError> {
+    match value {
+        Some(raw) => Ok(raw
+            .parse::<usize>()
+            .map_err(|_| cli_error(format!("invalid {name}: {raw}")))?),
+        None => Ok(default),
+    }
+}
+
 fn required<'a>(args: &'a [String], index: usize, name: &'static str) -> Result<&'a str, AnyError> {
     args.get(index)
         .map(String::as_str)
@@ -331,6 +398,6 @@ fn fail<T>(message: impl Into<String>) -> Result<T, AnyError> {
 
 fn usage() {
     println!(
-        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
+        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx bench [width] [height] [iterations]\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
     );
 }
