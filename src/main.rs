@@ -170,7 +170,7 @@ fn command_encode_ppm(args: &[String]) -> Result<(), AnyError> {
     let input = required(args, 0, "input.ppm")?;
     let output = required(args, 1, "output.dbpx")?;
     let image = parse_ppm(&fs::read(input)?)?;
-    fs::write(output, encode_from_flags(&image, args)?)?;
+    fs::write(output, encode_from_flags(&image, &args[2..])?)?;
     Ok(())
 }
 
@@ -187,18 +187,32 @@ fn command_make_demo(args: &[String]) -> Result<(), AnyError> {
     let width = optional_u32(args.get(1), 320, "width")?;
     let height = optional_u32(args.get(2), 200, "height")?;
     let image = demo(width, height)?;
-    fs::write(output, encode_from_flags(&image, args)?)?;
+    let flags = if args.len() > 3 { &args[3..] } else { &[] };
+    fs::write(output, encode_from_flags(&image, flags)?)?;
     Ok(())
 }
 
-fn encode_from_flags(image: &Image, args: &[String]) -> Result<Vec<u8>, dbpx::DbpxError> {
-    if args.iter().any(|arg| arg == "--raw") {
-        encode(image, Compression::RAW)
-    } else if args.iter().any(|arg| arg == "--rle") {
-        encode(image, Compression::RLE)
-    } else {
-        encode_auto(image)
+fn encode_from_flags(image: &Image, flags: &[String]) -> Result<Vec<u8>, AnyError> {
+    match encoder_mode(flags)? {
+        Some(comp) => Ok(encode(image, comp)?),
+        None => Ok(encode_auto(image)?),
     }
+}
+
+fn encoder_mode(flags: &[String]) -> Result<Option<Compression>, AnyError> {
+    let mut mode = None;
+    for flag in flags {
+        let next = match flag.as_str() {
+            "--raw" => Compression::RAW,
+            "--rle" => Compression::RLE,
+            _ => return fail(format!("unknown encoder flag: {flag}")),
+        };
+        if mode.is_some() && mode != Some(next) {
+            return fail("cannot use --raw and --rle together");
+        }
+        mode = Some(next);
+    }
+    Ok(mode)
 }
 
 fn demo(width: u32, height: u32) -> Result<Image, AnyError> {
