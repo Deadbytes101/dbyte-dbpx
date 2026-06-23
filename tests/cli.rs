@@ -86,6 +86,7 @@ fn demo_info_dump_check_decode_pipeline() {
     let dir = temp_dir("pipeline");
     let dbpx_path = dir.join("demo.dbpx");
     let ppm_path = dir.join("demo.ppm");
+    let bmp_path = dir.join("demo.bmp");
 
     let status = Command::new(dbpx())
         .arg("make-demo")
@@ -140,6 +141,18 @@ fn demo_info_dump_check_decode_pipeline() {
     let ppm = fs::read(&ppm_path).expect("read ppm");
     assert!(ppm.starts_with(b"P6\n32 16\n255\n"));
     assert_eq!(ppm.len(), b"P6\n32 16\n255\n".len() + 32 * 16 * 3);
+
+    let status = Command::new(dbpx())
+        .arg("dec-bmp")
+        .arg(&dbpx_path)
+        .arg(&bmp_path)
+        .status()
+        .expect("run dec-bmp");
+    assert!(status.success());
+
+    let bmp = fs::read(&bmp_path).expect("read bmp");
+    assert!(bmp.starts_with(b"BM"));
+    assert_eq!(bmp.len(), 54 + 32 * 16 * 3);
 
     fs::remove_dir_all(dir).expect("remove temp dir");
 }
