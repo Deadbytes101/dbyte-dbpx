@@ -32,7 +32,7 @@ fn version_prints_package_version() {
 }
 
 #[test]
-fn demo_info_check_decode_pipeline() {
+fn demo_info_dump_check_decode_pipeline() {
     let dir = temp_dir("pipeline");
     let dbpx_path = dir.join("demo.dbpx");
     let ppm_path = dir.join("demo.ppm");
@@ -56,6 +56,19 @@ fn demo_info_check_decode_pipeline() {
     assert!(info_stdout.contains("size: 32x16"));
     assert!(info_stdout.contains("color: RGB8"));
     assert!(info_stdout.contains("compression: raw"));
+
+    let dump = Command::new(dbpx())
+        .arg("dump")
+        .arg(&dbpx_path)
+        .output()
+        .expect("run dump");
+    assert!(dump.status.success());
+    let dump_stdout = String::from_utf8(dump.stdout).expect("dump stdout utf8");
+    assert!(dump_stdout.contains("header-bytes: 28"));
+    assert!(dump_stdout.contains("chunks: 2"));
+    assert!(dump_stdout.contains("PXLS"));
+    assert!(dump_stdout.contains("END!"));
+    assert!(dump_stdout.contains("crc=0x"));
 
     let check = Command::new(dbpx())
         .arg("check")
