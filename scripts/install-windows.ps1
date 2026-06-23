@@ -24,14 +24,16 @@ $cmdKey = Join-Path $typeKey "shell\open\command"
 $iconKey = Join-Path $typeKey "DefaultIcon"
 
 New-Item -Path $extKey -Force | Out-Null
-Set-ItemProperty -Path $extKey -Name "(default)" -Value "DBPX.Image"
+Set-Item -Path $extKey -Value "DBPX.Image"
 Set-ItemProperty -Path $extKey -Name "Content Type" -Value "image/x-dbpx"
 Set-ItemProperty -Path $extKey -Name "PerceivedType" -Value "image"
 
+New-Item -Path $typeKey -Force | Out-Null
+Set-Item -Path $typeKey -Value "DBPX Image"
+
 New-Item -Path $cmdKey -Force | Out-Null
 New-Item -Path $iconKey -Force | Out-Null
-Set-ItemProperty -Path $typeKey -Name "(default)" -Value "DBPX Image"
-Set-ItemProperty -Path $iconKey -Name "(default)" -Value "$ExePath,0"
-Set-ItemProperty -Path $cmdKey -Name "(default)" -Value "\"$ExePath\" view \"%1\""
+Set-Item -Path $iconKey -Value "$ExePath,0"
+Set-Item -Path $cmdKey -Value "\"$ExePath\" view \"%1\""
 
 Write-Host "registered .dbpx -> $ExePath view"
