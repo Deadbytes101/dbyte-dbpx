@@ -22,6 +22,7 @@ $extKey = Join-Path $classes ".dbpx"
 $typeKey = Join-Path $classes "DBPX.Image"
 $cmdKey = Join-Path $typeKey "shell\open\command"
 $iconKey = Join-Path $typeKey "DefaultIcon"
+$openCommand = '"{0}" view "%1"' -f $ExePath
 
 New-Item -Path $extKey -Force | Out-Null
 Set-Item -Path $extKey -Value "DBPX.Image"
@@ -34,6 +35,6 @@ Set-Item -Path $typeKey -Value "DBPX Image"
 New-Item -Path $cmdKey -Force | Out-Null
 New-Item -Path $iconKey -Force | Out-Null
 Set-Item -Path $iconKey -Value "$ExePath,0"
-Set-Item -Path $cmdKey -Value "\"$ExePath\" view \"%1\""
+Set-Item -Path $cmdKey -Value $openCommand
 
 Write-Host "registered .dbpx -> $ExePath view"
