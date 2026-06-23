@@ -10,7 +10,7 @@ if ($ExePath -eq "") {
     Push-Location $root
     try {
         cargo build --release
-        $ExePath = Join-Path $root "target\release\dbpx.exe"
+        $ExePath = Join-Path $root "target\release\dbpx-view.exe"
     } finally {
         Pop-Location
     }
@@ -22,7 +22,7 @@ $extKey = Join-Path $classes ".dbpx"
 $typeKey = Join-Path $classes "DBPX.Image"
 $cmdKey = Join-Path $typeKey "shell\open\command"
 $iconKey = Join-Path $typeKey "DefaultIcon"
-$openCommand = 'cmd /C for %F in ("%1") do ("{0}" dec-bmp "%~fF" "%TEMP%\%~nxF.view.bmp" && start "" "%TEMP%\%~nxF.view.bmp")' -f $ExePath
+$openCommand = '"{0}" "%1"' -f $ExePath
 
 New-Item -Path $extKey -Force | Out-Null
 Set-Item -Path $extKey -Value "DBPX.Image"
@@ -37,4 +37,4 @@ New-Item -Path $iconKey -Force | Out-Null
 Set-Item -Path $iconKey -Value "$ExePath,0"
 Set-Item -Path $cmdKey -Value $openCommand
 
-Write-Host "registered .dbpx -> named BMP viewer bridge"
+Write-Host "registered .dbpx -> native DBPX viewer"
