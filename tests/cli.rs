@@ -65,7 +65,7 @@ fn encoder_flags_reject_bad_combinations() {
         .expect("run conflict flags");
     assert!(!conflict.status.success());
     let stderr = String::from_utf8(conflict.stderr).expect("conflict stderr utf8");
-    assert!(stderr.contains("cannot use --raw and --rle together"));
+    assert!(stderr.contains("cannot use multiple encoder modes together"));
 
     let unknown = Command::new(dbpx())
         .arg("enc-ppm")
