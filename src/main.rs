@@ -1,4 +1,6 @@
-use dbpx::{decode, encode, encode_auto, info, rgb_bytes, ColorType, Compression, Image, HEADER_LEN};
+use dbpx::{
+    decode, encode, encode_auto, info, rgb_bytes, ColorType, Compression, Image, HEADER_LEN,
+};
 use std::env;
 use std::error::Error;
 use std::fmt;
@@ -213,7 +215,8 @@ fn dump_chunks(data: &[u8]) -> Result<Vec<DumpChunk>, AnyError> {
         let len = u64le(data, off + 4)?;
         let crc = u32le(data, off + 12)?;
         let body_start = off + 16;
-        let body_len = usize::try_from(len).map_err(|_| cli_error("chunk length overflows usize"))?;
+        let body_len =
+            usize::try_from(len).map_err(|_| cli_error("chunk length overflows usize"))?;
         let body_end = body_start
             .checked_add(body_len)
             .ok_or_else(|| cli_error("chunk length overflow"))?;
