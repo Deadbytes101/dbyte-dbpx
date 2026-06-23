@@ -49,6 +49,39 @@ fn bench_prints_summary() {
 }
 
 #[test]
+fn encoder_flags_reject_bad_combinations() {
+    let dir = temp_dir("flags");
+    let ppm_path = dir.join("one.ppm");
+    let dbpx_path = dir.join("one.dbpx");
+    fs::write(&ppm_path, b"P6\n1 1\n255\n\x01\x02\x03").expect("write ppm");
+
+    let conflict = Command::new(dbpx())
+        .arg("enc-ppm")
+        .arg(&ppm_path)
+        .arg(&dbpx_path)
+        .arg("--raw")
+        .arg("--rle")
+        .output()
+        .expect("run conflict flags");
+    assert!(!conflict.status.success());
+    let stderr = String::from_utf8(conflict.stderr).expect("conflict stderr utf8");
+    assert!(stderr.contains("cannot use --raw and --rle together"));
+
+    let unknown = Command::new(dbpx())
+        .arg("enc-ppm")
+        .arg(&ppm_path)
+        .arg(&dbpx_path)
+        .arg("--wat")
+        .output()
+        .expect("run unknown flag");
+    assert!(!unknown.status.success());
+    let stderr = String::from_utf8(unknown.stderr).expect("unknown stderr utf8");
+    assert!(stderr.contains("unknown encoder flag"));
+
+    fs::remove_dir_all(dir).expect("remove temp dir");
+}
+
+#[test]
 fn demo_info_dump_check_decode_pipeline() {
     let dir = temp_dir("pipeline");
     let dbpx_path = dir.join("demo.dbpx");
