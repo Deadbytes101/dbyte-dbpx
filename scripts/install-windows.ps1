@@ -22,7 +22,7 @@ $extKey = Join-Path $classes ".dbpx"
 $typeKey = Join-Path $classes "DBPX.Image"
 $cmdKey = Join-Path $typeKey "shell\open\command"
 $iconKey = Join-Path $typeKey "DefaultIcon"
-$openCommand = '"{0}" view "%1"' -f $ExePath
+$openCommand = 'cmd /C for %F in ("%1") do ("{0}" dec-bmp "%~fF" "%TEMP%\%~nxF.view.bmp" && start "" "%TEMP%\%~nxF.view.bmp")' -f $ExePath
 
 New-Item -Path $extKey -Force | Out-Null
 Set-Item -Path $extKey -Value "DBPX.Image"
@@ -37,4 +37,4 @@ New-Item -Path $iconKey -Force | Out-Null
 Set-Item -Path $iconKey -Value "$ExePath,0"
 Set-Item -Path $cmdKey -Value $openCommand
 
-Write-Host "registered .dbpx -> $ExePath view"
+Write-Host "registered .dbpx -> named BMP viewer bridge"
