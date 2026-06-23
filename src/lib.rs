@@ -229,8 +229,8 @@ fn parse(data: &[u8]) -> Result<(Info, &[u8]), DbpxError> {
         off += 4;
         let len64 = u64le(data, off)?;
         off += 8;
-        let len = usize::try_from(len64)
-            .map_err(|_| DbpxError::new("chunk length overflows usize"))?;
+        let len =
+            usize::try_from(len64).map_err(|_| DbpxError::new("chunk length overflows usize"))?;
         let want = u32le(data, off)?;
         off += 4;
         let end = off
@@ -353,12 +353,7 @@ fn rgba(img: &Image, i: usize) -> [u8; 4] {
         [g, g, g, 255]
     } else if img.color == ColorType::RGB8 {
         let b = i * 3;
-        [
-            img.pixels[b],
-            img.pixels[b + 1],
-            img.pixels[b + 2],
-            255,
-        ]
+        [img.pixels[b], img.pixels[b + 1], img.pixels[b + 2], 255]
     } else {
         let b = i * 4;
         [
@@ -552,8 +547,7 @@ mod tests {
             1,
             ColorType::RGB8,
             vec![
-                9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9,
-                8, 7,
+                9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7, 9, 8, 7,
             ],
         )
         .unwrap();
