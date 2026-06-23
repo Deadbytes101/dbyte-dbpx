@@ -1,5 +1,14 @@
 use dbpx::{decode, encode, encode_auto, info, ColorType, Compression, Image, HEADER_LEN};
 
+fn one_rgb_file() -> Vec<u8> {
+    let image = Image::new(1, 1, ColorType::RGB8, vec![1, 2, 3]).unwrap();
+    encode(&image, Compression::RAW).unwrap()
+}
+
+fn decode_error(data: &[u8]) -> String {
+    decode(data).unwrap_err().to_string()
+}
+
 #[test]
 fn info_matches_encoded_header() {
     let image = Image::new(
@@ -39,30 +48,96 @@ fn auto_file_decodes_to_original_pixels() {
 
 #[test]
 fn rejects_trailing_data_after_end_chunk() {
-    let image = Image::new(1, 1, ColorType::RGB8, vec![1, 2, 3]).unwrap();
-    let mut encoded = encode(&image, Compression::RAW).unwrap();
+    let mut encoded = one_rgb_file();
     encoded.push(0);
 
-    let err = decode(&encoded).unwrap_err().to_string();
+    let err = decode_error(&encoded);
     assert!(err.contains("trailing data"), "unexpected error: {err}");
 }
 
 #[test]
 fn rejects_bad_magic() {
-    let image = Image::new(1, 1, ColorType::RGB8, vec![1, 2, 3]).unwrap();
-    let mut encoded = encode(&image, Compression::RAW).unwrap();
+    let mut encoded = one_rgb_file();
     encoded[0] = b'X';
 
-    let err = decode(&encoded).unwrap_err().to_string();
+    let err = decode_error(&encoded);
     assert!(err.contains("bad DBPX magic"), "unexpected error: {err}");
 }
 
 #[test]
 fn rejects_crc_mismatch() {
-    let image = Image::new(1, 1, ColorType::RGB8, vec![1, 2, 3]).unwrap();
-    let mut encoded = encode(&image, Compression::RAW).unwrap();
+    let mut encoded = one_rgb_file();
     encoded[HEADER_LEN + 16] ^= 1;
 
-    let err = decode(&encoded).unwrap_err().to_string();
+    let err = decode_error(&encoded);
     assert!(err.contains("CRC mismatch"), "unexpected error: {err}");
+}
+
+#[test]
+fn rejects_truncated_header() {
+    let err = decode_error(b"DBPX");
+    assert!(err.contains("truncated header"), "unexpected error: {err}");
+}
+
+#[test]
+fn rejects_unsupported_version() {
+    let mut encoded = one_rgb_file();
+    encoded[8] = 1;
+
+    let err = decode_error(&encoded);
+    assert!(
+        err.contains("unsupported DBPX version"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn rejects_bad_compression_id() {
+    let mut encoded = one_rgb_file();
+    encoded[22] = 9;
+
+    let err = decode_error(&encoded);
+    assert!(err.contains("bad compression"), "unexpected error: {err}");
+}
+
+#[test]
+fn rejects_reserved_flags() {
+    let mut encoded = one_rgb_file();
+    encoded[23] = 1;
+
+    let err = decode_error(&encoded);
+    assert!(
+        err.contains("reserved flags set"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn rejects_zero_width_header() {
+    let mut encoded = one_rgb_file();
+    encoded[12..16].copy_from_slice(&0u32.to_le_bytes());
+
+    let err = decode_error(&encoded);
+    assert!(err.contains("dimensions"), "unexpected error: {err}");
+}
+
+#[test]
+fn rejects_missing_end_chunk() {
+    let mut encoded = one_rgb_file();
+    encoded.truncate(encoded.len() - 16);
+
+    let err = decode_error(&encoded);
+    assert!(err.contains("missing END"), "unexpected error: {err}");
+}
+
+#[test]
+fn rejects_chunk_count_mismatch() {
+    let mut encoded = one_rgb_file();
+    encoded[24..28].copy_from_slice(&1u32.to_le_bytes());
+
+    let err = decode_error(&encoded);
+    assert!(
+        err.contains("chunk count mismatch"),
+        "unexpected error: {err}"
+    );
 }
