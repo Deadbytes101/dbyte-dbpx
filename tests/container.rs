@@ -2,12 +2,13 @@ use dbpx::{decode, encode, encode_auto, info, ColorType, Compression, Image, HEA
 
 #[test]
 fn info_matches_encoded_header() {
-    let image = Image::new(2, 2, ColorType::RGB8, vec![
-        255, 0, 0,
-        0, 255, 0,
-        0, 0, 255,
-        255, 255, 255,
-    ]).unwrap();
+    let image = Image::new(
+        2,
+        2,
+        ColorType::RGB8,
+        vec![255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255],
+    )
+    .unwrap();
 
     let encoded = encode(&image, Compression::RAW).unwrap();
     let meta = info(&encoded).unwrap();
@@ -21,16 +22,16 @@ fn info_matches_encoded_header() {
 
 #[test]
 fn auto_file_decodes_to_original_pixels() {
-    let image = Image::new(8, 1, ColorType::RGB8, vec![
-        3, 4, 5,
-        3, 4, 5,
-        3, 4, 5,
-        3, 4, 5,
-        3, 4, 5,
-        3, 4, 5,
-        3, 4, 5,
-        3, 4, 5,
-    ]).unwrap();
+    let image = Image::new(
+        8,
+        1,
+        ColorType::RGB8,
+        vec![
+            3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5, 3,
+            4, 5,
+        ],
+    )
+    .unwrap();
 
     let encoded = encode_auto(&image).unwrap();
     assert_eq!(info(&encoded).unwrap().compression, Compression::RLE);
