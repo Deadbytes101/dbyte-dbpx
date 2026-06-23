@@ -21,6 +21,7 @@ Integrity:   CRC-32 per chunk
 ## Commands
 
 ```text
+dbpx --version
 dbpx info <input.dbpx>
 dbpx check <input.dbpx>
 dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]
@@ -55,6 +56,7 @@ Unix:
 ## Minimal run
 
 ```sh
+cargo run -- --version
 cargo run -- make-demo demo.dbpx 320 200
 cargo run -- info demo.dbpx
 cargo run -- check demo.dbpx
@@ -81,6 +83,7 @@ Included:
 - CRC-32 per chunk
 - dependency-free Rust core and CLI
 - PPM bridge
+- CLI integration tests
 ```
 
 Not included yet:
