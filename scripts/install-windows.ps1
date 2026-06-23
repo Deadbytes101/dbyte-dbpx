@@ -4,15 +4,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..")
-
 if ($ExePath -eq "") {
-    Push-Location $root
-    try {
-        cargo build --release
-        $ExePath = Join-Path $root "target\release\dbpx-view.exe"
-    } finally {
-        Pop-Location
+    $localViewer = Join-Path $PSScriptRoot "dbpx-view.exe"
+    if (Test-Path $localViewer) {
+        $ExePath = $localViewer
+    } else {
+        $root = Resolve-Path (Join-Path $PSScriptRoot "..")
+        Push-Location $root
+        try {
+            cargo build --release
+            $ExePath = Join-Path $root "target\release\dbpx-view.exe"
+        } finally {
+            Pop-Location
+        }
     }
 }
 
