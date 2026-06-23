@@ -23,10 +23,12 @@ Integrity:   CRC-32 per chunk
 ```text
 dbpx info <input.dbpx>
 dbpx check <input.dbpx>
-dbpx enc-ppm <input.ppm> <output.dbpx> [--raw]
+dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]
 dbpx dec-ppm <input.dbpx> <output.ppm>
-dbpx make-demo <output.dbpx> [width] [height]
+dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]
 ```
+
+The default encoder mode is auto. It writes raw or dbpx-rle, whichever produces the smaller DBPX file. Use `--raw` or `--rle` only when you want to force a specific mode.
 
 The CLI starts with PPM instead of PNG/JPEG so the v0.1 toolchain stays dependency-free. PNG/JPEG bridges should be added as optional tooling, not as mandatory core dependencies.
 
@@ -59,6 +61,12 @@ cargo run -- check demo.dbpx
 cargo run -- dec-ppm demo.dbpx demo.ppm
 ```
 
+For a forced RLE encode:
+
+```sh
+cargo run -- make-demo demo-rle.dbpx 320 200 --rle
+```
+
 ## v0.1 scope
 
 Included:
@@ -69,6 +77,7 @@ Included:
 - bounded dimensions and pixel count
 - raw pixel payload mode
 - simple DBPX RLE lossless mode
+- auto encoder selection
 - CRC-32 per chunk
 - dependency-free Rust core and CLI
 - PPM bridge
