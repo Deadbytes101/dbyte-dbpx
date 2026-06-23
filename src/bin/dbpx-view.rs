@@ -201,8 +201,17 @@ mod windows_view {
         for px in rgb.chunks_exact(3) {
             pixels.push(((px[0] as u32) << 16) | ((px[1] as u32) << 8) | (px[2] as u32));
         }
-        if VIEW.set(ViewState { width, height, pixels }).is_err() {
-            return Err(io::Error::new(io::ErrorKind::Other, "viewer state already initialized").into());
+        if VIEW
+            .set(ViewState {
+                width,
+                height,
+                pixels,
+            })
+            .is_err()
+        {
+            return Err(
+                io::Error::new(io::ErrorKind::Other, "viewer state already initialized").into(),
+            );
         }
 
         let title = Path::new(&input)
