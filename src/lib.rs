@@ -662,7 +662,11 @@ mod tests {
     fn encode_auto_prefers_indexed_when_palette_is_smaller() {
         let mut pixels = Vec::new();
         for i in 0..64u8 {
-            let color = if i % 2 == 0 { [10, 20, 30] } else { [40, 50, 60] };
+            let color = if i % 2 == 0 {
+                [10, 20, 30]
+            } else {
+                [40, 50, 60]
+            };
             pixels.extend_from_slice(&color);
         }
         let img = Image::new(64, 1, ColorType::RGB8, pixels).unwrap();
@@ -678,9 +682,7 @@ mod tests {
             pixels.extend_from_slice(&[(i & 0xFF) as u8, (i >> 8) as u8, 1]);
         }
         let img = Image::new(257, 1, ColorType::RGB8, pixels).unwrap();
-        let err = encode(&img, Compression::INDEXED)
-            .unwrap_err()
-            .to_string();
+        let err = encode(&img, Compression::INDEXED).unwrap_err().to_string();
         assert!(err.contains("at most 256 colors"));
     }
 
