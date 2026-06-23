@@ -1,4 +1,4 @@
-use dbpx::{decode, encode, encode_auto, info, rgb_bytes, ColorType, Compression, Image};
+use dbpx::{decode, encode, encode_auto, info, rgb_bytes, ColorType, Compression, Image, HEADER_LEN};
 use std::env;
 use std::error::Error;
 use std::fmt;
@@ -12,6 +12,13 @@ type AnyError = Box<dyn Error>;
 
 #[derive(Debug)]
 struct CliError(String);
+
+#[derive(Debug)]
+struct DumpChunk {
+    kind: [u8; 4],
+    len: u64,
+    crc: u32,
+}
 
 impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -37,6 +44,7 @@ fn run() -> Result<(), AnyError> {
     match args.get(1).map(String::as_str) {
         Some("info") => command_info(&args[2..]),
         Some("check") => command_check(&args[2..]),
+        Some("dump") => command_dump(&args[2..]),
         Some("enc-ppm") => command_encode_ppm(&args[2..]),
         Some("dec-ppm") => command_decode_ppm(&args[2..]),
         Some("make-demo") => command_make_demo(&args[2..]),
@@ -75,6 +83,30 @@ fn command_check(args: &[String]) -> Result<(), AnyError> {
         image.color.name(),
         image.pixels.len()
     );
+    Ok(())
+}
+
+fn command_dump(args: &[String]) -> Result<(), AnyError> {
+    let input = required(args, 0, "input.dbpx")?;
+    let data = fs::read(input)?;
+    let meta = info(&data)?;
+    let chunks = dump_chunks(&data)?;
+
+    println!("format: DBPX 0.1");
+    println!("header-bytes: {HEADER_LEN}");
+    println!("size: {}x{}", meta.width, meta.height);
+    println!("color: {}", meta.color.name());
+    println!("compression: {}", meta.compression.name());
+    println!("file-bytes: {}", data.len());
+    println!("chunks: {}", chunks.len());
+    for (index, chunk) in chunks.iter().enumerate() {
+        println!(
+            "  {index}: {} len={} crc=0x{:08X}",
+            chunk_name(chunk.kind),
+            chunk.len,
+            chunk.crc
+        );
+    }
     Ok(())
 }
 
@@ -170,6 +202,33 @@ fn parse_ppm(data: &[u8]) -> Result<Image, AnyError> {
     )?)
 }
 
+fn dump_chunks(data: &[u8]) -> Result<Vec<DumpChunk>, AnyError> {
+    let mut off = HEADER_LEN;
+    let mut chunks = Vec::new();
+    while off < data.len() {
+        if off + 16 > data.len() {
+            return fail("truncated chunk header");
+        }
+        let kind = arr4(data, off)?;
+        let len = u64le(data, off + 4)?;
+        let crc = u32le(data, off + 12)?;
+        let body_start = off + 16;
+        let body_len = usize::try_from(len).map_err(|_| cli_error("chunk length overflows usize"))?;
+        let body_end = body_start
+            .checked_add(body_len)
+            .ok_or_else(|| cli_error("chunk length overflow"))?;
+        if body_end > data.len() {
+            return fail("truncated chunk data");
+        }
+        chunks.push(DumpChunk { kind, len, crc });
+        off = body_end;
+        if kind == *b"END!" {
+            break;
+        }
+    }
+    Ok(chunks)
+}
+
 fn parse_u32_token(data: &[u8], pos: &mut usize, name: &'static str) -> Result<u32, AnyError> {
     let raw = token(data, pos).ok_or_else(|| cli_error(format!("missing PPM {name}")))?;
     Ok(raw
@@ -222,12 +281,53 @@ fn required<'a>(args: &'a [String], index: usize, name: &'static str) -> Result<
         .ok_or_else(|| cli_error(format!("missing argument: {name}")).into())
 }
 
+fn arr4(data: &[u8], at: usize) -> Result<[u8; 4], AnyError> {
+    let end = at
+        .checked_add(4)
+        .ok_or_else(|| cli_error("array offset overflow"))?;
+    Ok(data
+        .get(at..end)
+        .ok_or_else(|| cli_error("truncated array"))?
+        .try_into()
+        .expect("length checked"))
+}
+
+fn u32le(data: &[u8], at: usize) -> Result<u32, AnyError> {
+    let end = at
+        .checked_add(4)
+        .ok_or_else(|| cli_error("u32 offset overflow"))?;
+    Ok(u32::from_le_bytes(
+        data.get(at..end)
+            .ok_or_else(|| cli_error("truncated u32"))?
+            .try_into()
+            .expect("length checked"),
+    ))
+}
+
+fn u64le(data: &[u8], at: usize) -> Result<u64, AnyError> {
+    let end = at
+        .checked_add(8)
+        .ok_or_else(|| cli_error("u64 offset overflow"))?;
+    Ok(u64::from_le_bytes(
+        data.get(at..end)
+            .ok_or_else(|| cli_error("truncated u64"))?
+            .try_into()
+            .expect("length checked"),
+    ))
+}
+
+fn chunk_name(kind: [u8; 4]) -> String {
+    kind.iter()
+        .map(|&b| if b.is_ascii_graphic() { b as char } else { '.' })
+        .collect()
+}
+
 fn fail<T>(message: impl Into<String>) -> Result<T, AnyError> {
     Err(cli_error(message).into())
 }
 
 fn usage() {
     println!(
-        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
+        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
     );
 }
