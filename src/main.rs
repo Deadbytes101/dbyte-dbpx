@@ -126,6 +126,7 @@ fn command_bench(args: &[String]) -> Result<(), AnyError> {
     let image = demo(width, height)?;
     let raw_once = encode(&image, Compression::RAW)?;
     let rle_once = encode(&image, Compression::RLE)?;
+    let indexed_once = encode(&image, Compression::INDEXED).ok();
     let auto_once = encode_auto(&image)?;
     let auto_meta = info(&auto_once)?;
 
@@ -145,6 +146,17 @@ fn command_bench(args: &[String]) -> Result<(), AnyError> {
     }
     let encode_rle_us = start.elapsed().as_micros();
 
+    let encode_indexed_us = if indexed_once.is_some() {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let encoded = encode(black_box(&image), Compression::INDEXED)?;
+            sink ^= black_box(encoded.len());
+        }
+        Some(start.elapsed().as_micros())
+    } else {
+        None
+    };
+
     let start = Instant::now();
     for _ in 0..iterations {
         let decoded = decode(black_box(&auto_once))?;
@@ -158,10 +170,18 @@ fn command_bench(args: &[String]) -> Result<(), AnyError> {
     println!("iterations: {iterations}");
     println!("raw-file-bytes: {}", raw_once.len());
     println!("rle-file-bytes: {}", rle_once.len());
+    match &indexed_once {
+        Some(indexed) => println!("indexed-file-bytes: {}", indexed.len()),
+        None => println!("indexed-file-bytes: n/a"),
+    }
     println!("auto-file-bytes: {}", auto_once.len());
     println!("auto-compression: {}", auto_meta.compression.name());
     println!("encode-raw-us: {encode_raw_us}");
     println!("encode-rle-us: {encode_rle_us}");
+    match encode_indexed_us {
+        Some(us) => println!("encode-indexed-us: {us}"),
+        None => println!("encode-indexed-us: n/a"),
+    }
     println!("decode-auto-us: {decode_auto_us}");
     Ok(())
 }
@@ -205,10 +225,11 @@ fn encoder_mode(flags: &[String]) -> Result<Option<Compression>, AnyError> {
         let next = match flag.as_str() {
             "--raw" => Compression::RAW,
             "--rle" => Compression::RLE,
+            "--indexed" => Compression::INDEXED,
             _ => return fail(format!("unknown encoder flag: {flag}")),
         };
         if mode.is_some() && mode != Some(next) {
-            return fail("cannot use --raw and --rle together");
+            return fail("cannot use multiple encoder modes together");
         }
         mode = Some(next);
     }
@@ -412,6 +433,6 @@ fn fail<T>(message: impl Into<String>) -> Result<T, AnyError> {
 
 fn usage() {
     println!(
-        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx bench [width] [height] [iterations]\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
+        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx bench [width] [height] [iterations]\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle|--indexed]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle|--indexed]\n\nDefault encoder mode is auto: write the smallest available lossless mode."
     );
 }
