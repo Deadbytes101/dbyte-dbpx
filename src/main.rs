@@ -9,7 +9,7 @@ use std::hint::black_box;
 use std::io::Write;
 use std::path::Path;
 use std::process;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 type AnyError = Box<dyn Error>;
@@ -52,6 +52,8 @@ fn run() -> Result<(), AnyError> {
         Some("bench") => command_bench(&args[2..]),
         Some("enc-ppm") => command_encode_ppm(&args[2..]),
         Some("dec-ppm") => command_decode_ppm(&args[2..]),
+        Some("dec-bmp") => command_decode_bmp(&args[2..]),
+        Some("view") => command_view(&args[2..]),
         Some("make-demo") => command_make_demo(&args[2..]),
         Some("version") | Some("--version") | Some("-V") => {
             println!("dbpx {VERSION}");
@@ -199,6 +201,24 @@ fn command_decode_ppm(args: &[String]) -> Result<(), AnyError> {
     let output = required(args, 1, "output.ppm")?;
     let image = decode(&fs::read(input)?)?;
     write_ppm(output, &image)?;
+    Ok(())
+}
+
+fn command_decode_bmp(args: &[String]) -> Result<(), AnyError> {
+    let input = required(args, 0, "input.dbpx")?;
+    let output = required(args, 1, "output.bmp")?;
+    let image = decode(&fs::read(input)?)?;
+    write_bmp(output, &image)?;
+    Ok(())
+}
+
+fn command_view(args: &[String]) -> Result<(), AnyError> {
+    let input = required(args, 0, "input.dbpx")?;
+    let image = decode(&fs::read(input)?)?;
+    let path = temp_bmp_path()?;
+    write_bmp(&path, &image)?;
+    open_path(&path)?;
+    println!("opened: {}", path.display());
     Ok(())
 }
 
@@ -358,6 +378,90 @@ fn write_ppm(path: impl AsRef<Path>, image: &Image) -> Result<(), AnyError> {
     Ok(())
 }
 
+fn write_bmp(path: impl AsRef<Path>, image: &Image) -> Result<(), AnyError> {
+    let width = usize::try_from(image.width).map_err(|_| cli_error("BMP width overflows usize"))?;
+    let height = usize::try_from(image.height).map_err(|_| cli_error("BMP height overflows usize"))?;
+    let row_bytes = width
+        .checked_mul(3)
+        .ok_or_else(|| cli_error("BMP row size overflow"))?;
+    let padding = (4 - (row_bytes % 4)) % 4;
+    let stride = row_bytes
+        .checked_add(padding)
+        .ok_or_else(|| cli_error("BMP stride overflow"))?;
+    let image_size = stride
+        .checked_mul(height)
+        .ok_or_else(|| cli_error("BMP image size overflow"))?;
+    let file_size = 54usize
+        .checked_add(image_size)
+        .ok_or_else(|| cli_error("BMP file size overflow"))?;
+    let image_size_u32 = u32::try_from(image_size).map_err(|_| cli_error("BMP too large"))?;
+    let file_size_u32 = u32::try_from(file_size).map_err(|_| cli_error("BMP too large"))?;
+    let width_i32 = i32::try_from(image.width).map_err(|_| cli_error("BMP width too large"))?;
+    let height_i32 = i32::try_from(image.height).map_err(|_| cli_error("BMP height too large"))?;
+    let rgb = rgb_bytes(image);
+
+    let mut file = fs::File::create(path)?;
+    file.write_all(b"BM")?;
+    file.write_all(&file_size_u32.to_le_bytes())?;
+    file.write_all(&0u16.to_le_bytes())?;
+    file.write_all(&0u16.to_le_bytes())?;
+    file.write_all(&54u32.to_le_bytes())?;
+    file.write_all(&40u32.to_le_bytes())?;
+    file.write_all(&width_i32.to_le_bytes())?;
+    file.write_all(&height_i32.to_le_bytes())?;
+    file.write_all(&1u16.to_le_bytes())?;
+    file.write_all(&24u16.to_le_bytes())?;
+    file.write_all(&0u32.to_le_bytes())?;
+    file.write_all(&image_size_u32.to_le_bytes())?;
+    file.write_all(&2835u32.to_le_bytes())?;
+    file.write_all(&2835u32.to_le_bytes())?;
+    file.write_all(&0u32.to_le_bytes())?;
+    file.write_all(&0u32.to_le_bytes())?;
+
+    let pad = [0u8; 3];
+    for y in (0..height).rev() {
+        let start = y
+            .checked_mul(row_bytes)
+            .ok_or_else(|| cli_error("BMP row offset overflow"))?;
+        let row = &rgb[start..start + row_bytes];
+        for px in row.chunks_exact(3) {
+            file.write_all(&[px[2], px[1], px[0]])?;
+        }
+        file.write_all(&pad[..padding])?;
+    }
+    Ok(())
+}
+
+fn temp_bmp_path() -> Result<std::path::PathBuf, AnyError> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| cli_error("system clock before epoch"))?
+        .as_nanos();
+    let mut path = env::temp_dir();
+    path.push(format!("dbpx-view-{}-{nanos}.bmp", process::id()));
+    Ok(path)
+}
+
+fn open_path(path: &Path) -> Result<(), AnyError> {
+    let status = if cfg!(target_os = "windows") {
+        process::Command::new("cmd")
+            .arg("/C")
+            .arg("start")
+            .arg("")
+            .arg(path)
+            .status()?
+    } else if cfg!(target_os = "macos") {
+        process::Command::new("open").arg(path).status()?
+    } else {
+        process::Command::new("xdg-open").arg(path).status()?
+    };
+    if status.success() {
+        Ok(())
+    } else {
+        fail(format!("viewer command failed with status {status}"))
+    }
+}
+
 fn optional_u32(value: Option<&String>, default: u32, name: &'static str) -> Result<u32, AnyError> {
     match value {
         Some(raw) => Ok(raw
@@ -433,6 +537,6 @@ fn fail<T>(message: impl Into<String>) -> Result<T, AnyError> {
 
 fn usage() {
     println!(
-        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx bench [width] [height] [iterations]\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle|--indexed]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle|--indexed]\n\nDefault encoder mode is auto: write the smallest available lossless mode."
+        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx dump <input.dbpx>\n  dbpx bench [width] [height] [iterations]\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle|--indexed]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx dec-bmp <input.dbpx> <output.bmp>\n  dbpx view <input.dbpx>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle|--indexed]\n\nDefault encoder mode is auto: write the smallest available lossless mode."
     );
 }
