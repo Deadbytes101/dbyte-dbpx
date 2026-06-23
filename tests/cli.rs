@@ -32,6 +32,23 @@ fn version_prints_package_version() {
 }
 
 #[test]
+fn bench_prints_summary() {
+    let output = Command::new(dbpx())
+        .arg("bench")
+        .arg("16")
+        .arg("8")
+        .arg("1")
+        .output()
+        .expect("run bench");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("bench stdout utf8");
+    assert!(stdout.contains("bench: 16x8 RGB8"));
+    assert!(stdout.contains("iterations: 1"));
+    assert!(stdout.contains("auto-compression:"));
+}
+
+#[test]
 fn demo_info_dump_check_decode_pipeline() {
     let dir = temp_dir("pipeline");
     let dbpx_path = dir.join("demo.dbpx");
