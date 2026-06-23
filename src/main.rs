@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 type AnyError = Box<dyn Error>;
 
 #[derive(Debug)]
@@ -39,6 +40,10 @@ fn run() -> Result<(), AnyError> {
         Some("enc-ppm") => command_encode_ppm(&args[2..]),
         Some("dec-ppm") => command_decode_ppm(&args[2..]),
         Some("make-demo") => command_make_demo(&args[2..]),
+        Some("version") | Some("--version") | Some("-V") => {
+            println!("dbpx {VERSION}");
+            Ok(())
+        }
         Some("help") | Some("--help") | Some("-h") | None => {
             usage();
             Ok(())
@@ -223,6 +228,6 @@ fn fail<T>(message: impl Into<String>) -> Result<T, AnyError> {
 
 fn usage() {
     println!(
-        "DBPX v0.1\n\nUsage:\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
+        "DBPX tool {VERSION}\n\nUsage:\n  dbpx --version\n  dbpx info <input.dbpx>\n  dbpx check <input.dbpx>\n  dbpx enc-ppm <input.ppm> <output.dbpx> [--raw|--rle]\n  dbpx dec-ppm <input.dbpx> <output.ppm>\n  dbpx make-demo <output.dbpx> [width] [height] [--raw|--rle]\n\nDefault encoder mode is auto: write raw or dbpx-rle, whichever is smaller."
     );
 }
