@@ -6,6 +6,70 @@ It is not trying to beat JPEG on photographs in v0.1. The first target is narrow
 
 <img width="1185" height="832" alt="image" src="https://github.com/user-attachments/assets/d8cf4c65-8645-4b25-9d6a-629342ce338e" />
 
+## Architecture pipeline
+
+```mermaid
+flowchart LR
+    subgraph Input[Input sources]
+        PPM[PPM image]
+        Demo[make-demo pattern]
+        Existing[existing .dbpx file]
+    end
+
+    subgraph Encode[Encode path]
+        CliEnc[dbpx CLI encoder]
+        Auto[auto codec chooser]
+        Raw[raw pixels]
+        Rle[dbpx-rle]
+        Indexed[dbpx-indexed]
+        Writer[DBPX chunk writer]
+    end
+
+    subgraph Container[DBPX container]
+        Header[magic + header]
+        Chunks[typed chunks]
+        Crc[CRC-32 per chunk]
+        End[end chunk]
+    end
+
+    subgraph Decode[Decode path]
+        Reader[DBPX reader]
+        Validate[strict validation]
+        DecodePixels[pixel reconstruction]
+    end
+
+    subgraph Output[Output targets]
+        Info[info / dump / check]
+        PpmOut[PPM export]
+        BmpOut[BMP export]
+        Viewer[native dbpx-view.exe]
+        Corpus[dbpx-corpus proof]
+    end
+
+    PPM --> CliEnc
+    Demo --> CliEnc
+    CliEnc --> Auto
+    Auto --> Raw
+    Auto --> Rle
+    Auto --> Indexed
+    Raw --> Writer
+    Rle --> Writer
+    Indexed --> Writer
+    Writer --> Header
+    Header --> Chunks
+    Chunks --> Crc
+    Crc --> End
+    Existing --> Reader
+    End --> Reader
+    Reader --> Validate
+    Validate --> DecodePixels
+    DecodePixels --> Info
+    DecodePixels --> PpmOut
+    DecodePixels --> BmpOut
+    DecodePixels --> Viewer
+    DecodePixels --> Corpus
+```
+
 ## Format
 
 ```text
